@@ -1,0 +1,53 @@
+name: theta
+
+# Local development: `docker compose up -d` starts the two stores, and the API
+# runs from the venv with --reload. `docker compose --profile api up -d --build`
+# also runs the API in a container, the way it will be deployed.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: theta
+      POSTGRES_USER: theta
+      POSTGRES_PASSWORD: ${THETA_DB_PASSWORD:-theta_dev_password}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U theta -d theta"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    profiles: ["api"]
+    build: .
+    env_file: .env
+    environment:
+      # Inside the compose network the stores answer on their own names and ports.
+      THETA_DATABASE_URL: postgresql+asyncpg://theta:${THETA_DB_PASSWORD:-theta_dev_password}@db:5432/theta
+      THETA_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8100:8100"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
