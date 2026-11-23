@@ -25,7 +25,7 @@ from app.core.errors import BadGateway, ServiceUnavailable, Unprocessable
 
 log = logging.getLogger(__name__)
 
-# Room for ten questions with explanations plus Claude's thinking. Streaming keeps a
+# Room for ten questions plus Claude's thinking. Streaming keeps a
 # request this large clear of HTTP timeouts.
 MAX_TOKENS = 32000
 # OnlineCampus waits a little over three minutes for Theta; stay inside that.

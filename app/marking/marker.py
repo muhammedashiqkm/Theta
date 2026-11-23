@@ -31,25 +31,41 @@ class MarkReply:
 
 
 class Marker(Protocol):
-    async def ask(self, system: str, prompt: str, schema: dict, effort: Effort, timeout: float) -> MarkReply: ...
+    async def ask(self, system: str, prompt: str, schema: dict, effort: Effort, timeout: float,
+                  quick: bool = False) -> MarkReply: ...
 
 
 class ClaudeMarker:
-    def __init__(self, client: anthropic.AsyncAnthropic, model: str):
+    def __init__(self, client: anthropic.AsyncAnthropic, model: str, quick_model: str = ""):
         self._client = client
         self._model = model
+        self._quick_model = quick_model
 
-    async def ask(self, system: str, prompt: str, schema: dict, effort: Effort, timeout: float) -> MarkReply:
+    async def ask(self, system: str, prompt: str, schema: dict, effort: Effort, timeout: float,
+                  quick: bool = False) -> MarkReply:
+        """`quick`: the fast first check, on the quick model. It has no server-side refusal
+        fallback, so it is sent without one; a decline there goes to the careful check."""
+        client = self._client.with_options(timeout=timeout, max_retries=1)
+        output_config = {"effort": effort, "format": {"type": "json_schema", "schema": schema}}
         try:
-            message = await self._client.with_options(timeout=timeout, max_retries=1).beta.messages.create(
-                model=self._model,
-                max_tokens=MAX_TOKENS,
-                betas=[FALLBACK_BETA],
-                fallbacks="default",
-                system=system,
-                messages=[{"role": "user", "content": prompt}],
-                output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
-            )
+            if quick and self._quick_model:
+                message = await client.messages.create(
+                    model=self._quick_model,
+                    max_tokens=MAX_TOKENS,
+                    system=system,
+                    messages=[{"role": "user", "content": prompt}],
+                    output_config=output_config,
+                )
+            else:
+                message = await client.beta.messages.create(
+                    model=self._model,
+                    max_tokens=MAX_TOKENS,
+                    betas=[FALLBACK_BETA],
+                    fallbacks="default",
+                    system=system,
+                    messages=[{"role": "user", "content": prompt}],
+                    output_config=output_config,
+                )
         except anthropic.RateLimitError as exc:
             log.warning("Claude rate limit while marking (request %s)", exc.request_id)
             raise ServiceUnavailable("Claude is busy right now; the answer will be marked shortly.") from None
@@ -84,4 +100,4 @@ class ClaudeMarker:
 def get_marker(settings: Annotated[Settings, Depends(get_settings)]) -> Marker:
     if not settings.anthropic_api_key:
         raise ServiceUnavailable("Marking is not set up on this server: it has no Anthropic API key.")
-    return ClaudeMarker(_client(settings.anthropic_api_key), settings.marking_model)
+    return ClaudeMarker(_client(settings.anthropic_api_key), settings.marking_model, settings.marking_quick_model)

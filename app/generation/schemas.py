@@ -9,6 +9,8 @@ OptionalName = Annotated[str | None, StringConstraints(strip_whitespace=True, ma
 
 MAX_QUESTIONS = 10
 MAX_AVOID = 100
+# Learning objectives / outcomes of the lesson, sent by OnlineCampus when the school wrote some.
+MAX_GOALS = 12
 
 
 class DifficultyCounts(BaseModel):
@@ -45,6 +47,10 @@ class GenerateIn(BaseModel):
     instructions: Annotated[str | None, StringConstraints(strip_whitespace=True, max_length=1000)] = None
     # Stems of questions already in the bank for this topic, so none is repeated.
     avoid: list[Annotated[str, StringConstraints(max_length=10000)]] = Field(default_factory=list, max_length=MAX_AVOID)
+    # What the lesson is meant to teach (the school's syllabus outcomes and the teachers'
+    # lesson outcomes, "Objective: ..." / "Outcome: ..."). Empty when none are written down.
+    lesson_goals: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=400)]] = Field(
+        default_factory=list, max_length=MAX_GOALS)
 
     @field_validator("types", "bloom_levels")
     @classmethod
@@ -58,6 +64,8 @@ class GenerateIn(BaseModel):
         # typed by the student with the accepted numbers exactly.
         if QuestionType.NUMERIC in values:
             raise ValueError("Numeric questions are no longer written; ask for short answers.")
+        if QuestionType.LONG_ANSWER in values:
+            raise ValueError("Long-answer questions are no longer written.")
         return values
 
     @model_validator(mode="after")

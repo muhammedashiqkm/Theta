@@ -81,10 +81,8 @@ def to_question(raw: dict, request: GenerateIn) -> GeneratedQuestion:
         raise ValueError(f"The question text is longer than {STEM_MAX} characters.")
     _closed(stem, "the question text")
 
-    explanation = _text(raw.get("explanation")) or None
-    if explanation and len(explanation) > STEM_MAX:
-        raise ValueError(f"The explanation is longer than {STEM_MAX} characters.")
-    _closed(explanation, "the explanation")
+    # No explanation is written: teachers add one themselves if they want it.
+    explanation = None
 
     try:
         difficulty = Difficulty(raw.get("difficulty"))
@@ -135,15 +133,6 @@ def _answer_key(qtype: QuestionType, raw: dict) -> GeneratedKey | None:
         if any(len(a) > ACCEPTED_ITEM_MAX for a in accepted):
             raise ValueError(f"An accepted answer is longer than {ACCEPTED_ITEM_MAX} characters.")
         return GeneratedKey(accepted=accepted, case_sensitive=False)
-
-    if qtype == QuestionType.LONG_ANSWER:
-        model_answer = _text(raw.get("model_answer")) or None
-        if model_answer is None:
-            return None
-        if len(model_answer) > STEM_MAX:
-            raise ValueError(f"The model answer is longer than {STEM_MAX} characters.")
-        _closed(model_answer, "the model answer")
-        return GeneratedKey(model_answer=model_answer)
 
     return None  # option types are keyed by their options
 

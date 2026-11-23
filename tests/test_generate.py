@@ -54,7 +54,7 @@ def request(**overrides) -> dict:
         "chapter": "Algebra",
         "unit": "Linear equations",
         "count": 5,
-        "types": ["mcq_single", "true_false", "short_answer", "long_answer"],
+        "types": ["mcq_single", "true_false", "short_answer"],
         "difficulty_counts": {"easy": 2, "medium": 2, "hard": 1},
     }
     body.update(overrides)
@@ -97,8 +97,7 @@ async def test_every_type_comes_back_in_the_bank_shape(headers):
               accepted_answers=["75", "75 km/h"]),
         blank("short_answer", "What do we call a number with exactly two factors?",
               accepted_answers=["prime", " Prime ", "a prime number", ""]),
-        blank("long_answer", "Explain why $x^2 \\geq 0$ for every real $x$.",
-              model_answer="A square of a positive or negative number is positive; $0^2 = 0$."),
+        blank("short_answer", "What is the square root of 49?", accepted_answers=["7"]),
     ])
     response = await post(writer, headers)
     body = response.json()
@@ -106,7 +105,7 @@ async def test_every_type_comes_back_in_the_bank_shape(headers):
     assert body["rejected"] == []
     assert body["model"] == "claude-opus-5"
     assert (body["input_tokens"], body["output_tokens"]) == (1200, 3400)
-    single, tf, numeric, short, long = body["questions"]
+    single, tf, numeric, short, _ = body["questions"]
     assert single["answer_key"] is None
     assert [o["is_correct"] for o in single["options"]] == [False, True, False, False]
     assert tf["options"][0] == {"text": "True", "is_correct": True}
@@ -114,7 +113,11 @@ async def test_every_type_comes_back_in_the_bank_shape(headers):
     assert numeric["answer_key"]["accepted"] == ["75", "75 km/h"]
     assert short["answer_key"]["accepted"] == ["prime", "a prime number"]
     assert short["answer_key"]["case_sensitive"] is False
-    assert long["answer_key"]["model_answer"].startswith("A square")
+
+
+async def test_long_answers_are_no_longer_written(headers):
+    response = await post(FakeWriter([]), headers, types=["long_answer"])
+    assert response.status_code == 422
 
 
 async def test_the_prompt_carries_the_request(headers):
@@ -130,6 +133,20 @@ async def test_the_prompt_carries_the_request(headers):
     assert "- Solve 2x + 3 = 7." in text
     assert "Bloom levels: apply." in text
     assert "Difficulty: 1 easy. Label each question with its difficulty." in text
+
+
+async def test_the_lesson_goals_reach_the_prompt(headers):
+    writer = FakeWriter([mcq()])
+    await post(writer, headers, count=1, difficulty_counts={"easy": 1},
+               lesson_goals=["Objective: Solve one-step equations", "Outcome: Checks a solution by substitution"])
+    _, text, _ = writer.calls[0]
+    assert "<lesson_goals>\n- Objective: Solve one-step equations\n- Outcome: Checks a solution by substitution\n</lesson_goals>" in text
+
+
+async def test_no_lesson_goals_no_tag(headers):
+    writer = FakeWriter([mcq()])
+    await post(writer, headers, count=1, difficulty_counts={"easy": 1})
+    assert "<lesson_goals>" not in writer.calls[0][1]
 
 
 async def test_the_prompt_names_the_difficulty_mix(headers):

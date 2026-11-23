@@ -15,12 +15,11 @@ TYPE_NAMES: dict[QuestionType, str] = {
     QuestionType.MCQ_MULTI: "multiple choice with more than one correct answer",
     QuestionType.TRUE_FALSE: "true/false",
     QuestionType.SHORT_ANSWER: "short answer, a word, phrase or number",
-    QuestionType.LONG_ANSWER: "long answer, a few sentences",
 }
 
 # The types Claude may write. Numeric questions are no longer used: a number is a
 # short answer whose accepted answers are digits.
-WRITABLE_TYPES = [t for t in QuestionType if t != QuestionType.NUMERIC]
+WRITABLE_TYPES = [t for t in QuestionType if t not in (QuestionType.NUMERIC, QuestionType.LONG_ANSWER)]
 
 SYSTEM = """You write questions for a school question bank. A teacher reviews every question before students see it, and the bank later measures each question's real difficulty from students' answers. So each question should test one clear idea and have an answer key that is unambiguously right.
 
@@ -31,12 +30,11 @@ How to write them:
 - mcq_multi: 4 to 6 options, at least one correct and at least one wrong. Say in the question that more than one answer may be correct.
 - true_false: exactly two options, "True" and "False" (in Arabic "صح" and "خطأ"), with the right one marked correct. The statement must be clearly true or clearly false.
 - short_answer: the answer is a word, a short phrase or one number. List every acceptable form and spelling in accepted_answers (at most 10). For a number, write it in digits (7, 2.5), add the form with its unit when there is one ("7 cm"), and when the answer needs rounding tell the student how to round.
-- long_answer: an open question answered in a few sentences. Put a model answer in model_answer.
-- Fields that do not apply to a question's type take an empty value: options [], accepted_answers [], model_answer "".
+- Fields that do not apply to a question's type take an empty value: options [], accepted_answers [].
 - Write math in LaTeX between $...$ inside a sentence, or $$...$$ on its own line. Close every formula you open, and write \\$ for a money sign.
-- explanation: one to three sentences a student can read after answering, showing why the answer is right.
 - difficulty: easy means most of the class answers correctly, medium about half, hard only the strongest students.
 - bloom_level: the kind of thinking the question asks for (remember, understand, apply, analyze, evaluate, create).
+- When lesson goals are given, write questions that check those goals, spread across them; stay inside the named chapter, unit or sub-unit.
 - Do not repeat or closely paraphrase a question listed as already in the bank, and make the questions in one batch different from each other."""
 
 _OPTION = {
@@ -53,13 +51,11 @@ _QUESTION = {
         "stem": {"type": "string"},
         "options": {"type": "array", "items": _OPTION},
         "accepted_answers": {"type": "array", "items": {"type": "string"}},
-        "model_answer": {"type": "string"},
-        "explanation": {"type": "string"},
         "difficulty": {"type": "string", "enum": [d.value for d in Difficulty]},
         "bloom_level": {"type": "string", "enum": [b.value for b in BloomLevel]},
     },
     "required": [
-        "type", "stem", "options", "accepted_answers", "model_answer", "explanation", "difficulty", "bloom_level",
+        "type", "stem", "options", "accepted_answers", "difficulty", "bloom_level",
     ],
     "additionalProperties": False,
 }
@@ -86,7 +82,7 @@ def build(request: GenerateIn) -> str:
     if request.unit and request.subunit:
         lines.append(f"Sub-unit: {request.subunit}. Every question is about this sub-unit.")
     if request.language == "ar":
-        lines.append("Language: Arabic. Write every question, option, answer and explanation in Arabic; keep math in LaTeX.")
+        lines.append("Language: Arabic. Write every question, option and answer in Arabic; keep math in LaTeX.")
     else:
         lines.append("Language: English")
     lines.append(f"Number of questions: {request.count}")
@@ -102,6 +98,9 @@ def build(request: GenerateIn) -> str:
         lines.append("Bloom levels: " + ", ".join(b.value for b in request.bloom_levels) + ".")
 
     parts = ["\n".join(lines)]
+    if request.lesson_goals:
+        goals = "\n".join(f"- {_one_line(goal)}" for goal in request.lesson_goals)
+        parts.append(f"<lesson_goals>\n{goals}\n</lesson_goals>")
     if request.instructions:
         parts.append(f"<teacher_notes>\n{request.instructions}\n</teacher_notes>")
     if request.avoid:

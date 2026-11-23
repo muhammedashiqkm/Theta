@@ -22,8 +22,8 @@ class FakeMarker:
         self.replies = list(replies)
         self.calls: list[dict] = []
 
-    async def ask(self, system, prompt_text, schema, effort, timeout):
-        self.calls.append({"system": system, "prompt": prompt_text, "schema": schema, "effort": effort})
+    async def ask(self, system, prompt_text, schema, effort, timeout, quick=False):
+        self.calls.append({"system": system, "prompt": prompt_text, "schema": schema, "effort": effort, "quick": quick})
         reply = self.replies.pop(0)
         if reply is MarkRefused:
             raise MarkRefused()
@@ -66,15 +66,6 @@ SCHEME = [{"text": "Names the parallel line through a vertex.", "marks": 1},
           {"text": "Concludes the angles add up to 180°.", "marks": 1}]
 
 
-def long_body(**overrides) -> dict:
-    body = {"question": "Explain why the angles of a triangle add up to 180°.",
-            "model_answer": "Draw a line through one vertex parallel to the opposite side...",
-            "points": SCHEME,
-            "answer": "Draw a parallel line through the top. The alternate angles are equal. So they make a straight line, 180."}
-    body.update(overrides)
-    return body
-
-
 def marking(awarded: list[float], feedback: str = "Good.", evidence: list[str] | None = None) -> dict:
     evidence = evidence or [""] * len(awarded)
     return {"points": [{"index": i, "awarded": a, "evidence": e} for i, (a, e) in enumerate(zip(awarded, evidence))],
@@ -109,7 +100,7 @@ async def test_an_unsure_quick_check_is_decided_by_a_careful_one(headers):
 
 
 async def test_a_declined_short_answer_is_wrong_with_a_plain_reason(headers):
-    body = (await post("/v1/mark/short-answer", short_body(language="ar"), headers, FakeMarker(MarkRefused))).json()
+    body = (await post("/v1/mark/short-answer", short_body(language="ar"), headers, FakeMarker(MarkRefused, MarkRefused))).json()
     assert body["correct"] is False and body["reason"] == "تعذّر التحقق من الإجابة تلقائياً."
 
 
@@ -134,65 +125,6 @@ async def test_marking_needs_the_service_token(headers):
     assert response.status_code == 401
 
 
-# ----- mark schemes ---------------------------------------------------------------------
-
-async def test_the_scheme_is_fitted_to_the_question_marks(headers):
-    marker = FakeMarker({"points": [{"text": "A", "marks": 1}, {"text": "B", "marks": 1}, {"text": "C", "marks": 2},
-                                    {"text": " ", "marks": 1}, {"text": "D", "marks": -1}]})
-    body = (await post("/v1/mark/rubric", {"question": "Explain.", "model_answer": "Because.", "marks": 5},
-                       headers, marker)).json()
-    assert [(p["text"], p["marks"]) for p in body["points"]] == [("A", 1.5), ("B", 1.5), ("C", 2.0)]
-    assert body["total"] == 5 and sum(p["marks"] for p in body["points"]) == 5
-    assert "The question is worth 5 marks." in marker.calls[0]["prompt"]
-    assert marker.calls[0]["effort"] == "medium"
-
-
-async def test_an_unusable_scheme_becomes_one_point(headers):
-    body = (await post("/v1/mark/rubric", {"question": "Explain.", "marks": 2, "language": "ar"},
-                       headers, FakeMarker({"points": []}))).json()
-    assert body["points"] == [{"text": "إجابة كاملة وصحيحة.", "marks": 2.0}]
-
-
-# ----- long answers ---------------------------------------------------------------------
-
-async def test_two_markings_that_agree_are_averaged(headers):
-    marker = FakeMarker(
-        marking([1, 2, 1], "Clear and complete.", ["Draw a parallel line through the top.", "The alternate angles are equal.", ""]),
-        marking([1, 1, 1], "Good, but explain the angles.", ["", "", "they make a straight line"]),
-    )
-    body = (await post("/v1/mark/long-answer", long_body(), headers, marker)).json()
-    assert [p["awarded"] for p in body["points"]] == [1, 1.5, 1]
-    assert body["total"] == 3.5 and body["max"] == 4 and body["markings"] == 2
-    assert [p["evidence"] for p in body["points"]] == [
-        "Draw a parallel line through the top.", "The alternate angles are equal.", "they make a straight line"]
-    assert len(marker.calls) == 2 and all(c["effort"] == "high" for c in marker.calls)
-    assert "<mark_scheme>\n0. 1: Names the parallel line through a vertex.\n1. 2: Uses alternate angles." in marker.calls[0]["prompt"]
-
-
-async def test_markings_that_disagree_get_a_third_and_the_middle_one_counts(headers):
-    marker = FakeMarker(marking([1, 2, 1], "High."), marking([0, 0, 0], "Low."), marking([1, 1, 0], "Middle."))
-    body = (await post("/v1/mark/long-answer", long_body(), headers, marker)).json()
-    assert body["markings"] == 3 and body["total"] == 2 and body["feedback"] == "Middle."
-    assert [p["awarded"] for p in body["points"]] == [1, 1, 0]
-
-
-async def test_marks_are_kept_inside_each_point_and_evidence_must_be_the_students(headers):
-    marker = FakeMarker(
-        {"points": [{"index": 0, "awarded": 5, "evidence": "made up words"}, {"index": 1, "awarded": 0.3, "evidence": ""},
-                    {"index": 1, "awarded": 2, "evidence": ""}, {"index": 7, "awarded": 1, "evidence": ""}], "feedback": "x"},
-        {"points": [{"index": 0, "awarded": 1, "evidence": ""}, {"index": 1, "awarded": 0.5, "evidence": ""}], "feedback": "y"},
-    )
-    body = (await post("/v1/mark/long-answer", long_body(), headers, marker)).json()
-    # First: point 0 capped at 1, point 1 0.3 → 0.5 (first entry wins), point 2 missing → 0.
-    assert [p["awarded"] for p in body["points"]] == [1, 0.5, 0]
-    assert body["points"][0]["evidence"] == ""
-
-
-async def test_a_declined_long_answer_gets_no_marks(headers):
-    body = (await post("/v1/mark/long-answer", long_body(), headers, FakeMarker(MarkRefused, MarkRefused))).json()
-    assert body["total"] == 0 and body["markings"] == 0 and body["feedback"] == "This answer could not be marked automatically."
-
-
 # ----- the Claude call ------------------------------------------------------------------
 
 class FakeMessages:
@@ -207,7 +139,7 @@ class FakeMessages:
 
 def fake_client(message):
     messages = FakeMessages(message)
-    client = SimpleNamespace(beta=SimpleNamespace(messages=messages))
+    client = SimpleNamespace(beta=SimpleNamespace(messages=messages), messages=messages)
     client.with_options = lambda **_: client
     return client, messages
 
@@ -225,6 +157,20 @@ async def test_claude_marker_sends_effort_schema_and_fallbacks():
     assert messages.kwargs["fallbacks"] == "default" and messages.kwargs["model"] == "claude-opus-5"
 
 
+async def test_the_quick_check_uses_the_quick_model_without_fallbacks():
+    client, messages = fake_client(message('{"verdict": "correct", "reason": "ok"}'))
+    await ClaudeMarker(client, "claude-opus-5", "claude-haiku-5-5").ask("sys", "user", prompt.SHORT_FIRST_SCHEMA, "low", 5, quick=True)
+    assert messages.kwargs["model"] == "claude-haiku-5-5"
+    assert "fallbacks" not in messages.kwargs and "betas" not in messages.kwargs
+
+
+async def test_a_declined_quick_check_goes_to_the_careful_check(headers):
+    marker = FakeMarker(MarkRefused, {"verdict": "correct", "reason": "Same meaning."})
+    body = (await post("/v1/mark/short-answer", short_body(), headers, marker)).json()
+    assert body["correct"] is True and body["checked_twice"] is True
+    assert [c["quick"] for c in marker.calls] == [True, False]
+
+
 async def test_claude_marker_reports_a_decline():
     client, _ = fake_client(message(None, stop_reason="refusal"))
     with pytest.raises(MarkRefused):
@@ -236,3 +182,79 @@ async def test_claude_marker_turns_unusable_answers_into_502(reply):
     client, _ = fake_client(reply)
     with pytest.raises(BadGateway):
         await ClaudeMarker(client, "claude-opus-5").ask("sys", "user", {}, "low", 5)
+
+
+# ----- a test's results in plain words -------------------------------------------------------
+
+def summary_body(**overrides) -> dict:
+    body = {
+        "test_title": "Environmental Studies - Subject test 2",
+        "subject_name": "Environmental Studies",
+        "students": 119, "sat": 114, "absent": 5,
+        "average": 518, "previous_average": 509, "lowest": 324, "highest": 713,
+        "beginning": 17, "developing": 40, "proficient": 45, "advanced": 12,
+        "chapters": [{"name": "Not enough time to have eyes", "percent_right": 46, "answers": 210}],
+        "divisions": [{"name": "1C", "average": 470, "weak_chapters": ["Not enough time to have eyes"]}],
+        "odd_questions": 2,
+        "language": "en",
+    }
+    body.update(overrides)
+    return body
+
+
+async def test_a_test_summary_is_written_from_the_figures(headers):
+    marker = FakeMarker({"headline": "Most of the class is **on track**.",
+                         "went_well": ["Strong in forests.", "", "B is ahead.", "Third point."],
+                         "needs_attention": ["Chapter 3 needs another look."],
+                         "tip": "Revise chapter 3 with group C."})
+    response = await post("/v1/mark/test-summary", summary_body(), headers, marker)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["headline"] == "Most of the class is on track."
+    assert data["went_well"] == ["Strong in forests.", "B is ahead."]
+    assert data["needs_attention"] == ["Chapter 3 needs another look."]
+    assert data["tip"] == "Revise chapter 3 with group C."
+    assert data["summary"].startswith("Most of the class is on track. Strong in forests.")
+    assert data["model"] == "claude-opus-5"
+    call = marker.calls[0]
+    assert call["effort"] == "low"
+    assert "Previous test's average: 509" in call["prompt"]
+    assert "1C: average 470; weak: Not enough time to have eyes" in call["prompt"]
+    assert "Write the summary in English." in call["prompt"]
+
+
+async def test_a_declined_test_summary_comes_back_empty(headers):
+    response = await post("/v1/mark/test-summary", summary_body(language="ar"), headers, FakeMarker(MarkRefused))
+    assert response.status_code == 200
+    assert response.json()["summary"] == ""
+
+
+@pytest.mark.parametrize("overrides", [{"average": 900}, {"students": -1}, {"language": "fr"}, {"test_title": ""}])
+async def test_bad_test_summary_requests_are_422(headers, overrides):
+    response = await post("/v1/mark/test-summary", summary_body(**overrides), headers, FakeMarker())
+    assert response.status_code == 422
+
+
+# ----- one student's progress in a teacher's words ---------------------------------------------
+
+def comment_body(**overrides) -> dict:
+    body = {"subject_name": "Environmental Studies",
+            "tests": [{"score": 495, "level": "proficient"}, {"score": 535, "level": "proficient"}],
+            "latest_level": "proficient", "strengths": ["In the house & in the forest"],
+            "focus": ["Not enough time to have eyes"], "language": "en"}
+    body.update(overrides)
+    return body
+
+
+async def test_a_student_comment_names_no_one_and_keeps_case(headers):
+    marker = FakeMarker({"comment": "[NAME] has made **steady** progress this term."})
+    response = await post("/v1/mark/student-comment", comment_body(), headers, marker)
+    assert response.status_code == 200
+    assert response.json()["comment"] == "[NAME] has made steady progress this term."
+    assert "Scores, oldest first: 495 (proficient), 535 (proficient)" in marker.calls[0]["prompt"]
+
+
+@pytest.mark.parametrize("overrides", [{"tests": []}, {"tests": [{"score": 100}]}, {"latest_level": "expert"}])
+async def test_bad_student_comment_requests_are_422(headers, overrides):
+    response = await post("/v1/mark/student-comment", comment_body(**overrides), headers, FakeMarker())
+    assert response.status_code == 422

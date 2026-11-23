@@ -1,8 +1,7 @@
 """AI marking for OnlineCampus's adaptive tests.
 
 Stateless. OnlineCampus sends only what its own rules cannot decide — a short answer
-that is not an accepted answer or a number to compare, and the written part's long
-answers — and keeps every verdict, mark scheme and mark. Any caller role: a student's
+that is not an accepted answer or a number to compare — and keeps every verdict. Any caller role: a student's
 answer is marked on the student's own request.
 """
 
@@ -13,7 +12,14 @@ from fastapi import APIRouter, Depends
 from app.core.security import Caller, get_caller
 from app.marking import service
 from app.marking.marker import Marker, get_marker
-from app.marking.schemas import LongMarkIn, LongMarkOut, RubricIn, RubricOut, ShortMarkIn, ShortMarkOut
+from app.marking.schemas import (
+    ShortMarkIn,
+    ShortMarkOut,
+    StudentCommentIn,
+    StudentCommentOut,
+    TestSummaryIn,
+    TestSummaryOut,
+)
 
 router = APIRouter(prefix="/v1/mark", tags=["mark"])
 
@@ -27,19 +33,20 @@ async def mark_short_answer(
     return await service.mark_short(body, marker, caller)
 
 
-@router.post("/rubric", response_model=RubricOut)
-async def write_rubric(
-    body: RubricIn,
+@router.post("/test-summary", response_model=TestSummaryOut)
+async def write_test_summary(
+    body: TestSummaryIn,
     _: Annotated[Caller, Depends(get_caller)],
     marker: Annotated[Marker, Depends(get_marker)],
-) -> RubricOut:
-    return await service.write_rubric(body, marker)
+) -> TestSummaryOut:
+    """A class's test results in a few plain sentences, from the figures only (no names)."""
+    return await service.write_test_summary(body, marker)
 
-
-@router.post("/long-answer", response_model=LongMarkOut)
-async def mark_long_answer(
-    body: LongMarkIn,
+@router.post("/student-comment", response_model=StudentCommentOut)
+async def write_student_comment(
+    body: StudentCommentIn,
     _: Annotated[Caller, Depends(get_caller)],
     marker: Annotated[Marker, Depends(get_marker)],
-) -> LongMarkOut:
-    return await service.mark_long(body, marker)
+) -> StudentCommentOut:
+    """A teacher's comment for one student's printed report, from the figures only (no name)."""
+    return await service.write_student_comment(body, marker)

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # AI marking of adaptive tests (POST /v1/mark/*): short answers during the test,
     # the written part's mark schemes and marks after it.
     marking_model: str = "claude-opus-5"
+    # The quick first check of a short answer (the student may be waiting): a fast, light
+    # model. Only when it is unsure (or declines) does `marking_model` check carefully.
+    # Empty = the quick check uses `marking_model` too.
+    marking_quick_model: str = "claude-haiku-5-5"
 
 
 @lru_cache
