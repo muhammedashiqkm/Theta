@@ -29,8 +29,8 @@ python -m venv venv
 .\venv\Scripts\pip install -r requirements-dev.txt
 .\venv\Scripts\alembic upgrade head
 
-# 4. The API on http://localhost:8100 (docs at /docs)
-.\venv\Scripts\uvicorn app.main:app --reload --port 8100
+# 4. The API on http://localhost:5024 (docs at /docs)
+.\venv\Scripts\uvicorn app.main:app --reload --port 5024
 ```
 
 Tests need neither store running: `.\venv\Scripts\pytest`

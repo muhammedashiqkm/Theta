@@ -21,6 +21,12 @@ class Unprocessable(ThetaError):
     status_code = 422
 
 
+class Gone(ThetaError):
+    """Something Theta's provider held (an uploaded textbook) is no longer there."""
+
+    status_code = 410
+
+
 class BadGateway(ThetaError):
     """A service Theta depends on answered, but not usefully."""
 

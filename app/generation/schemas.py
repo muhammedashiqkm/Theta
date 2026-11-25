@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 from app.bank.enums import BloomLevel, Difficulty, QuestionType
+from app.textbook.schemas import MAX_PASSAGES, SourcePassage
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 OptionalName = Annotated[str | None, StringConstraints(strip_whitespace=True, max_length=200)]
@@ -52,6 +53,10 @@ class GenerateIn(BaseModel):
     lesson_goals: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=400)]] = Field(
         default_factory=list, max_length=MAX_GOALS)
 
+    # Pages of the school's own textbook for this topic (OnlineCampus picks the closest
+    # passages). When given, every question is written from them and names its page.
+    source_passages: list[SourcePassage] = Field(default_factory=list, max_length=MAX_PASSAGES)
+
     @field_validator("types", "bloom_levels")
     @classmethod
     def _distinct(cls, values: list) -> list:
@@ -100,6 +105,8 @@ class GeneratedQuestion(BaseModel):
     bloom_level: BloomLevel
     options: list[GeneratedOption]
     answer_key: GeneratedKey | None
+    # The textbook page the question was written from (None when no pages were given).
+    source_page: int | None = None
 
 
 class RejectedQuestion(BaseModel):

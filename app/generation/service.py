@@ -108,7 +108,10 @@ def to_question(raw: dict, request: GenerateIn) -> GeneratedQuestion:
         rules.check_options(qtype, pairs)
         options = [GeneratedOption(text=text, is_correct=correct) for text, correct in pairs]
 
+    pages = {p.page for p in request.source_passages}
+    page = raw.get("source_page")
     return GeneratedQuestion(
+        source_page=page if isinstance(page, int) and page in pages else None,
         type=qtype,
         stem=stem,
         explanation=explanation,

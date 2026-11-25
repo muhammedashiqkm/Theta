@@ -40,8 +40,9 @@ services:
       # Inside the compose network the stores answer on their own names and ports.
       THETA_DATABASE_URL: postgresql+asyncpg://theta:${THETA_DB_PASSWORD:-theta_dev_password}@db:5432/theta
       THETA_REDIS_URL: redis://redis:6379/0
+      THETA_PORT: ${THETA_PORT:-5024}
     ports:
-      - "8100:8100"
+      - "${THETA_PORT:-5024}:${THETA_PORT:-5024}"
     depends_on:
       db:
         condition: service_healthy

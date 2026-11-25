@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     # Empty = the quick check uses `marking_model` too.
     marking_quick_model: str = "claude-haiku-5-5"
 
+    # Textbooks (POST /v1/textbook/*): a school's PDF is read by Gemini (text pages and
+    # scanned pages alike, Arabic included) and cut into passages, each with an embedding,
+    # so question writing and the bulk-upload check can work from the book's own pages.
+    # Both need `google_api_key`. Theta stores nothing: OnlineCampus keeps the passages.
+    textbook_read_model: str = "gemini-3.8-flash"
+    embedding_model: str = "gemini-embedding-001"
+    # Vector length; OnlineCampus stores vectors of this size, so change it only with a re-read.
+    embedding_dimensions: int = 768
+
 
 @lru_cache
 def get_settings() -> Settings:

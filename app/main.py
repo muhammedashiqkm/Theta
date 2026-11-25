@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api import health
-from app.api.v1 import assessments, generate, mark, questions, status, student, topics
+from app.api.v1 import assessments, generate, mark, questions, status, student, textbook, topics
 from app.core.config import get_settings
 from app.core.db import create_session_factory
 from app.core.errors import ThetaError
@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(student.router)
     app.include_router(generate.router)
     app.include_router(mark.router)
+    app.include_router(textbook.router)
     return app
 
 

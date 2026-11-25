@@ -35,6 +35,7 @@ How to write them:
 - difficulty: easy means most of the class answers correctly, medium about half, hard only the strongest students.
 - bloom_level: the kind of thinking the question asks for (remember, understand, apply, analyze, evaluate, create).
 - When lesson goals are given, write questions that check those goals, spread across them; stay inside the named chapter, unit or sub-unit.
+- When textbook passages are given, write every question from them: the facts, words and examples the class's own book uses, and an answer the passages make plainly right. The question still stands alone (do not write "according to the passage"). Set source_page to the page the answer is on; with no passages, set it to 0.
 - Do not repeat or closely paraphrase a question listed as already in the bank, and make the questions in one batch different from each other."""
 
 _OPTION = {
@@ -53,9 +54,10 @@ _QUESTION = {
         "accepted_answers": {"type": "array", "items": {"type": "string"}},
         "difficulty": {"type": "string", "enum": [d.value for d in Difficulty]},
         "bloom_level": {"type": "string", "enum": [b.value for b in BloomLevel]},
+        "source_page": {"type": "integer"},
     },
     "required": [
-        "type", "stem", "options", "accepted_answers", "difficulty", "bloom_level",
+        "type", "stem", "options", "accepted_answers", "difficulty", "bloom_level", "source_page",
     ],
     "additionalProperties": False,
 }
@@ -101,6 +103,9 @@ def build(request: GenerateIn) -> str:
     if request.lesson_goals:
         goals = "\n".join(f"- {_one_line(goal)}" for goal in request.lesson_goals)
         parts.append(f"<lesson_goals>\n{goals}\n</lesson_goals>")
+    if request.source_passages:
+        passages = "\n".join(f'<passage page="{p.page}">\n{p.text}\n</passage>' for p in request.source_passages)
+        parts.append(f"<textbook_passages>\n{passages}\n</textbook_passages>")
     if request.instructions:
         parts.append(f"<teacher_notes>\n{request.instructions}\n</teacher_notes>")
     if request.avoid:
